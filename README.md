@@ -61,7 +61,7 @@ service UserService {
   option (protolayer.rpc.service_auth) = {mode: REQUIRED};
 
   rpc GetUser(GetUserRequest) returns (GetUserResponse) {
-    option (protolayer.rpc.service_access) = {
+    option (protolayer.rpc.method_access) = {
       rules: {
         roles: ["user"]
       }
