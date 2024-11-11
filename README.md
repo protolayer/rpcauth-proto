@@ -56,16 +56,13 @@ syntax = "proto3";
 import "protolayer/auth.proto";
 
 service UserService {
-  // All methods in this service require authentication
+  // All methods in this service require authentication.
   option (protolayer.service_auth) = { mode: REQUIRED };
 
   rpc GetUser(GetUserRequest) returns (GetUserResponse) {
-    // Restrict access to the "user" role
+    // Restrict access to the "user" role.
     option (protolayer.method_auth) = {
-      access: [
-        { roles: ["admin"] },
-        { roles: [ "support", "manager" ] permissions: [ "view", "update" ] }
-      ]
+      access: { roles: ["user"] }
     };
   }
 
