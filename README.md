@@ -1,4 +1,4 @@
-# protolayer/auth
+# protolayer/auth-proto
 
 This repository defines Protobuf options that allow you to declare authentication, authorization,
 and rate limiting policies directly in your service or method definitions. Security requirements
