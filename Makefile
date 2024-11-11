@@ -1,4 +1,4 @@
-.PHONY: all clean lint generate buf-update check help format build init install-buf
+.PHONY: all clean lint generate buf-update check help format build init install-buf breaking
 
 all: install-buf format lint generate
 
@@ -52,6 +52,8 @@ generate: install-buf
 
 lint: install-buf
 	$(BUF) lint
+
+breaking: install-buf
 	$(BUF) breaking --against '.git#branch=main'
 
 buf-update: install-buf
@@ -69,12 +71,13 @@ build: install-buf
 init: install-buf
 	$(BUF) config init
 
-check: lint format build
+check: build format lint breaking
 
 help:
 	@echo "Available targets:"
 	@echo "  generate    : Generate code from proto files"
 	@echo "  lint        : Lint proto files and check breaking changes"
+	@echo "  breaking    : Check breaking changes"
 	@echo "  buf-update  : Update buf dependencies"
 	@echo "  clean       : Remove generated files"
 	@echo "  format      : Format proto files"

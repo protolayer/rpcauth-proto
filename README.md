@@ -2,45 +2,44 @@
 
 This repository defines Protobuf options that allow you to declare authentication, authorization,
 and rate limiting policies directly in your service or method definitions. Security requirements
-live alongside your API definitions, making them clear and maintainable.
+live **alongside your API definitions**, making them clear and maintainable.
+
+The Protobuf options are published as a Buf module at
+[buf.build/protolayer/rpcauth](https://buf.build/protolayer/rpcauth).
 
 Enforce these policies in your [Connect](https://connectrpc.com/) (or [gRPC](https://grpc.io/))
 services using language-specific SDKs:
 
 - [protolayer/rpcauth-go](https://github.com/protolayer/rpcauth-go) (Go)
-
-The Protobuf options are published as a Buf module at
-[buf.build/protolayer/rpcauth](https://buf.build/protolayer/rpcauth).
+- .. more to come
 
 ## Features
 
-- 🔋 **Batteries Included**: Ready-to-use SDK with pluggable authenticators, authorizers, and rate
-  limiters
-- 🔌 **Modular Design**: Use only the components you need
-  - 🔐 **Authentication Rules**: Define who can access your services and methods
-  - 🎫 **Authorization Rules**: Control what authenticated users can do using hybrid RBAC (roles and
-    permissions)
-  - 🚦 **Rate Limiting**: Protect your services from abuse with configurable rate limiting
-    strategies
-  - 🔒 **Privacy Controls**: Field-level visibility rules for sensitive data
-- 🔧 **Framework Agnostic**: Works with both Connect and gRPC
+- 🔐 Authentication: Define who can access your services and methods
+- 🎫 Authorization: Control what authenticated users can do using hybrid RBAC (roles and
+  permissions)
+- 🚦 Rate Limiting: Protect your services from abuse with configurable rate limiting strategies
+- 🔒 Field Privacy: Control field-level visibility for sensitive data
+- 🔌 Modular Design: Use only the components you need
+- 🔧 Framework Agnostic: Works with both Connect and gRPC
 
 ## Usage
 
-### 1. Import the Protobuf options
-
-```protobuf
-import "protolayer/rpc/auth.proto";
-```
-
-Add the Buf module to your `buf.yaml` file:
+### 1. Import the module
 
 ```yaml
+# buf.yaml
 deps:
   - buf.build/protolayer/rpcauth
 ```
 
 Run `buf dep update` to fetch the module and update your `buf.lock` file.
+
+Only one file to import:
+
+```protobuf
+import "protolayer/rpc/auth.proto";
+```
 
 ### 2. Define security policies in your `.proto` files
 
@@ -57,26 +56,29 @@ syntax = "proto3";
 import "protolayer/rpc/auth.proto";
 
 service UserService {
-  // Secure the entire service
+  // All methods in this service require authentication
   option (protolayer.rpc.service_auth) = {mode: REQUIRED};
 
   rpc GetUser(GetUserRequest) returns (GetUserResponse) {
-    option (protolayer.rpc.method_access) = {
-      rules: {
+    // Restrict access to the "user" role
+    option (protolayer.rpc.method_auth) = {
+      access: {
         roles: ["user"]
       }
     };
   }
 
   rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse) {
-    // Override service-level rules for specific methods
-    option (protolayer.rpc.method_auth) = {mode: PUBLIC};
-    option (protolayer.rpc.method_rate) = {
-      key: GLOBAL
-      leaky_bucket: {
-        burst_capacity: 5
-        rate_requests: 25
-        rate_seconds: 60 // 25 requests per minute
+    // Public endpoint, no authentication required. But rate limiting is enforced.
+    option (protolayer.rpc.method_auth) = {
+      mode: PUBLIC
+      rate: {
+        key: GLOBAL
+        leaky_bucket: {
+          burst_capacity: 5
+          rate_requests: 25
+          rate_seconds: 60 // 25 requests per minute
+        }
       }
     };
   }
@@ -119,52 +121,111 @@ path, handler := userv1connect.NewUserServiceHandler(
 mux.Handle(path, handler)
 ```
 
-## Options
+## Key Concepts
 
-### Authentication
+### Authentication (who are you?)
 
-The `AuthRule` supports different authentication modes:
+Authentication rules can be defined at both service and method levels. Method-level rules override
+service-level rules.
+
+Modes:
 
 - `PUBLIC`: No authentication required
-- `REQUIRED`: Authentication required to access endpoint
+- `REQUIRED`: Authentication required
 
-### Authorization
+### Authorization (what can you do?)
 
-The `AccessRule` implements a hybrid RBAC system:
+Uses Hybrid RBAC with rule sets that combine:
 
-- Multiple `RuleSet`s can be defined (OR relationship between sets)
-- Each `RuleSet` contains:
-  - Roles: Required roles for access
-  - Permissions: Required permissions for access
-- Within a `RuleSet`, all roles and permissions must match (AND relationship)
+- `roles` (e.g., "admin", "user")
+- `permissions` (e.g., "read", "write")
 
-### Rate Limiting
+AND/OR Logic:
 
-The `RateRule` supports various rate limiting strategies:
+- Between rule sets: ANY rule set can grant access (OR relationship)
+- Within a rule set: all roles AND all permissions must match
 
-- Rate limit by: IP, User, API Key, or Global
-- Configurable algorithms:
-  - Leaky Bucket (implemented)
-  - Token Bucket (planned)
-  - Fixed Window (planned)
-- Role-based bypass options
+Example:
+
+```protobuf
+// Single rule set
+access: {
+  roles: ["admin"]
+  permissions: ["delete"]
+}
+// Requires: admin role AND delete permission
+
+// Multiple rule sets
+access: [
+  { roles: ["admin"] },
+  { roles: ["support", "manager"], permissions: ["view", "update"] }
+]
+// Access granted if either:
+// 1. User has admin role, OR
+// 2. User has both support AND manager roles, AND both view AND update permissions
+```
+
+### Rate Limiting (how often can you do it?)
+
+Controls request frequency using configurable rate limiting rules.
+
+Supports multiple limit key types:
+
+- `IP`: Limit by client IP address
+- `USER`: Limit by authenticated user
+- `API_KEY`: Limit by API key identifier
+- `GLOBAL`: Global limit across all requests
+
+Algorithms:
+
+- Leaky Bucket
+  - `burst_capacity` - Maximum burst size
+  - `rate_requests` - Number of allowed requests
+  - `rate_seconds` - Time window in seconds
+
+Example:
+
+```protobuf
+rate: {
+  key: USER
+  leaky_bucket: {
+    burst_capacity: 5
+    rate_requests: 25
+    rate_seconds: 60 // 25 requests per minute
+  }
+}
+```
 
 ### Privacy Controls
 
-Field-level privacy rules support:
+Controls field-level visibility in responses.
 
-- `VISIBLE`: Normal field access
-- `OMIT`: Field removed from response
-- `REDACT`: Field value replaced with placeholder
-- Role-based visibility controls
+- `VISIBLE`: Field is not sensitive
+- `OMIT`: Remove field from response
+- `REDACT`: Replace field with placeholder value
+
+It's also possible to define exceptions by specifying roles that can access the field regardless of
+the privacy mode.
+
+Example:
+
+```protobuf
+string email = 3 [(protolayer.rpc.privacy) = {mode: REDACT}];
+
+// Exception: Admins can see the email
+string email = 3 [(protolayer.rpc.privacy) = {
+  mode: REDACT
+  visible_to_roles: ["admin"]
+}];
+```
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Roadmap
+## FAQ
 
-- [ ] More rate limiting algorithms
-- [ ] Caching integration
-- [ ] Metrics and monitoring
-- [ ] Additional authorization schemes
+Why the name protolayer?
+
+I'm trying to avoid adding more projects under my personal GitHub account. So an organization was
+created to host this project and it's called `protolayer`.

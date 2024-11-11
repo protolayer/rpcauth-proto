@@ -11,41 +11,42 @@ option go_package = "buf.build/gen/go/protolayer/rpcauth/protocolbuffers/go/prot
 //
 // See https://github.com/protocolbuffers/protobuf/blob/v28.3/docs/options.md for more information.
 //
-// I hope to get a range of 10 numbers to work with, which should be enough for the foreseeable
+// I hope to get a range of a few numbers to work with, which should be enough for the foreseeable
 // future.
 
-// Service-level options for configuring authentication, authorization, and rate limiting.
+// Adds authentication rules that apply to an entire service. These rules act as defaults for all
+// methods in the service.
 extend google.protobuf.ServiceOptions {
-  // Authentication configuration for all RPCs in the service.
   optional AuthRule service_auth = 1300;
-  // Authorization configuration for all RPCs in the service.
-  optional AccessRule service_access = 1301;
-  // Rate limiting configuration for all RPCs in the service.
-  optional RateRule service_limit = 1302;
 }
 
-// Method-level options for configuring authentication, authorization, and rate limiting. These
-// options always take precedence over their service-level counterparts, allowing methods to
-// override service defaults.
+// Adds authentication rules for individual RPC methods. These rules override any service-level auth
+// rules when present.
 extend google.protobuf.MethodOptions {
-  // Authentication configuration (who are you?).
-  optional AuthRule method_auth = 1303;
-  // Authorization configuration (what can you do?).
-  optional AccessRule method_access = 1304;
-  // Rate limiting configuration (how often can you do it?).
-  optional RateRule method_rate = 1305;
+  optional AuthRule method_auth = 1301;
 }
 
-// Add field-level extension for privacy rules.
+// Adds privacy controls for individual message fields. Used to restrict field visibility and access
+// based on user roles.
 extend google.protobuf.FieldOptions {
-  // Controls field visibility and access.
-  optional PrivacyRule privacy = 1306;
+  // Controls field visibility and access requirements.
+  optional PrivacyRule privacy = 1302;
 }
 
-// Authentication configuration for the RPC method or service.
+// Combines authentication mode, access rules, and rate limiting for controlling access to services
+// and methods.
 message AuthRule {
-  // Mode of authentication.
+  // Determines if authentication is required or optional. Who are you?
   AuthMode mode = 1;
+  // Specifies role-based access control rules using Hybrid RBAC (roles and permissions). What can
+  // you do?
+  //
+  // List of rule sets, where any single rule set grants access (OR relationship). Access is granted
+  // if ANY rule set passes. This allows for different combinations of roles/permissions that can
+  // grant access.
+  repeated RuleSet access = 2;
+  // Defines rate limiting parameters. How often can you do it?
+  RateRule rate = 3;
 }
 
 // Different modes of authentication.
@@ -55,14 +56,6 @@ enum AuthMode {
   PUBLIC = 1;
   // Authentication required to access endpoint.
   REQUIRED = 2;
-}
-
-// Access control configuration using Hybrid RBAC (roles and permissions).
-message AccessRule {
-  // List of rule sets, where any single rule set grants access (OR relationship). Access is granted
-  // if ANY rule set passes. This allows for different combinations of roles/permissions that can
-  // grant access.
-  repeated RuleSet rules = 1;
 }
 
 // A set of roles and permissions that together grant access. All roles and permissions within a set
@@ -83,7 +76,7 @@ message RuleSet {
 message RateRule {
   // What to use as the rate limit key.
   LimitBy key = 1;
-  // Roles that bypass rate limiting entirely.
+  // Roles that bypass rate limiting entirely. Only applies to authenticated users.
   repeated string bypass_roles = 2;
   // Rate limiting algorithm configuration.
   oneof algorithm {
@@ -103,8 +96,7 @@ enum LimitBy {
   USER = 2;
   // Limit by API key.
   //
-  // This is useful for limiting the number of requests per API key. Less permissive than USER,
-  // which is based on the authenticated user instead of the API key.
+  // This is useful for limiting the number of requests per API key, regardless of the USER.
   API_KEY = 3;
   // Global limit across all requests.
   //
