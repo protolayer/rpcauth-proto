@@ -1,10 +1,10 @@
 syntax = "proto3";
 
-package protolayer;
+package rpcauth;
 
 import "google/protobuf/descriptor.proto";
 
-option go_package = "buf.build/gen/go/protolayer/auth/protocolbuffers/go/protolayer";
+option go_package = "buf.build/gen/go/protolayer/rpcauth/protocolbuffers/go/rpcauth";
 
 // Note, the rules are unregistered. Using a sufficiently high number to avoid conflicts with other
 // fields that are in the lower ranges.
@@ -17,20 +17,20 @@ option go_package = "buf.build/gen/go/protolayer/auth/protocolbuffers/go/protola
 // Adds authentication rules that apply to an entire service. These rules act as defaults for all
 // methods in the service.
 extend google.protobuf.ServiceOptions {
-  optional AuthRule service_auth = 1300;
+  optional AuthRule service = 1300;
 }
 
 // Adds authentication rules for individual RPC methods. These rules override any service-level auth
 // rules when present.
 extend google.protobuf.MethodOptions {
-  optional AuthRule method_auth = 1301;
+  optional AuthRule method = 1301;
 }
 
 // Adds privacy controls for individual message fields. Used to restrict field visibility and access
 // based on user roles.
 extend google.protobuf.FieldOptions {
   // Controls field visibility and access requirements.
-  optional PrivacyRule privacy = 1302;
+  optional PrivacyRule field = 1302;
 }
 
 // Combines authentication mode, access rules, and rate limiting for controlling access to services

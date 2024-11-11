@@ -1,16 +1,16 @@
-# protolayer/auth-proto
+# rpcauth-proto
 
 This repository defines Protobuf options that allow you to declare authentication, authorization,
-and rate limiting policies directly in your service or method definitions. Security requirements
-live **alongside your API definitions**, making them clear and maintainable.
+and rate limiting policies directly in your Protobuf service or method definitions. Security
+requirements live **alongside your API definitions**, making them clear and maintainable.
 
 The Protobuf options are published as a Buf module at
-[buf.build/protolayer/auth](https://buf.build/protolayer/auth).
+[buf.build/protolayer/rpcauth](https://buf.build/protolayer/rpcauth).
 
 Enforce these policies in your [Connect](https://connectrpc.com/) (or [gRPC](https://grpc.io/))
 services using language-specific SDKs:
 
-- [protolayer/auth-go](https://github.com/protolayer/auth-go) (Go)
+- [protolayer/rpcauth-go](https://github.com/protolayer/rpcauth-go) (Go)
 - .. more to come
 
 ## Features
@@ -30,7 +30,7 @@ services using language-specific SDKs:
 ```yaml
 # buf.yaml
 deps:
-  - buf.build/protolayer/auth
+  - buf.build/protolayer/rpcauth
 ```
 
 Run `buf dep update` to fetch the module and update your `buf.lock` file.
@@ -38,7 +38,7 @@ Run `buf dep update` to fetch the module and update your `buf.lock` file.
 Only one file to import:
 
 ```protobuf
-import "protolayer/auth.proto";
+import "rpcauth/auth.proto";
 ```
 
 ### 2. Define security policies in your `.proto` files
@@ -53,22 +53,20 @@ The `User` message also demonstrates field-level privacy with a redacted email f
 ```protobuf
 syntax = "proto3";
 
-import "protolayer/auth.proto";
+import "rpcauth/auth.proto";
 
 service UserService {
   // All methods in this service require authentication.
-  option (protolayer.service_auth) = { mode: REQUIRED };
+  option (rpcauth.service) = { mode: REQUIRED };
 
   rpc GetUser(GetUserRequest) returns (GetUserResponse) {
     // Restrict access to the "user" role.
-    option (protolayer.method_auth) = {
-      access: { roles: ["user"] }
-    };
+    option (rpcauth.method) = { access: { roles: ["user"] } };
   }
 
   rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse) {
     // Public endpoint, no authentication required. But rate limiting is enforced.
-    option (protolayer.method_auth) = {
+    option (rpcauth.method) = {
       mode: PUBLIC
       rate: {
         key: GLOBAL
@@ -85,7 +83,7 @@ service UserService {
 message User {
   string id = 1;
   string username = 2;
-  string email = 3 [(protolayer.privacy) = { mode: REDACT }];
+  string email = 3 [(rpcauth.field) = { mode: REDACT }];
 }
 ```
 
@@ -100,14 +98,14 @@ to enforce the policies defined in your Protobuf files.
 
 ```go
 import (
-    "github.com/protolayer/auth-go"
+    "github.com/protolayer/rpcauth-go"
 )
 
 // Create auth interceptor with your implementations or use the built-in ones.
-authInterceptor := auth.NewConnectInterceptor(
-    auth.WithAuthenticator(yourAuthImpl),
-    auth.WithAuthorizer(yourAuthzImpl),
-    auth.WithRateLimiter(yourRateLimiter),
+authInterceptor := rpcauth.NewConnectInterceptor(
+    rpcauth.WithAuthenticator(yourAuthImpl),
+    rpcauth.WithAuthorizer(yourAuthzImpl),
+    rpcauth.WithRateLimiter(yourRateLimiter),
 )
 
 // Use with your Connect handlers

@@ -2,7 +2,7 @@
 version: v2
 modules:
   - path: proto
-    name: buf.build/protolayer/auth
+    name: buf.build/protolayer/rpcauth
 lint:
   use:
     - STANDARD
