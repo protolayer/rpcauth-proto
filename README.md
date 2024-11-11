@@ -100,23 +100,22 @@ to enforce the policies defined in your Protobuf files.
 
 ```go
 import (
-    protolayerauth "github.com/protolayer/auth-go"
+    "github.com/protolayer/auth-go"
 )
 
 // Create auth interceptor with your implementations or use the built-in ones.
-authInterceptor := protolayerauth.NewConnectInterceptor(
-    protolayerauth.WithAuthenticator(yourAuthImpl),
-    protolayerauth.WithAuthorizer(yourAuthzImpl),
-    protolayerauth.WithRateLimiter(yourRateLimiter),
+authInterceptor := auth.NewConnectInterceptor(
+    auth.WithAuthenticator(yourAuthImpl),
+    auth.WithAuthorizer(yourAuthzImpl),
+    auth.WithRateLimiter(yourRateLimiter),
 )
 
 // Use with your Connect handlers
 mux := http.NewServeMux()
-path, handler := userv1connect.NewUserServiceHandler(
+mux.Handle(userv1connect.NewUserServiceHandler(
     &UserServiceServer{},
     connect.WithInterceptors(authInterceptor), // Add the interceptor
-)
-mux.Handle(path, handler)
+))
 ```
 
 ## Key Concepts
