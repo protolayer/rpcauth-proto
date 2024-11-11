@@ -1,0 +1,137 @@
+syntax = "proto3";
+
+package protolayer;
+
+import "google/protobuf/descriptor.proto";
+
+option go_package = "buf.build/gen/go/protolayer/auth/protocolbuffers/go/protolayer";
+
+// Note, the rules are unregistered. Using a sufficiently high number to avoid conflicts with other
+// fields that are in the lower ranges.
+//
+// See https://github.com/protocolbuffers/protobuf/blob/v28.3/docs/options.md for more information.
+//
+// I hope to get a range of a few numbers to work with, which should be enough for the foreseeable
+// future.
+
+// Adds authentication rules that apply to an entire service. These rules act as defaults for all
+// methods in the service.
+extend google.protobuf.ServiceOptions {
+  optional AuthRule service_auth = 1300;
+}
+
+// Adds authentication rules for individual RPC methods. These rules override any service-level auth
+// rules when present.
+extend google.protobuf.MethodOptions {
+  optional AuthRule method_auth = 1301;
+}
+
+// Adds privacy controls for individual message fields. Used to restrict field visibility and access
+// based on user roles.
+extend google.protobuf.FieldOptions {
+  // Controls field visibility and access requirements.
+  optional PrivacyRule privacy = 1302;
+}
+
+// Combines authentication mode, access rules, and rate limiting for controlling access to services
+// and methods.
+message AuthRule {
+  // Determines if authentication is required or optional. Who are you?
+  AuthMode mode = 1;
+  // Specifies role-based access control rules using Hybrid RBAC (roles and permissions). What can
+  // you do?
+  //
+  // List of rule sets, where any single rule set grants access (OR relationship). Access is granted
+  // if ANY rule set passes. This allows for different combinations of roles/permissions that can
+  // grant access.
+  repeated RuleSet access = 2;
+  // Defines rate limiting parameters. How often can you do it?
+  RateRule rate = 3;
+}
+
+// Different modes of authentication.
+enum AuthMode {
+  AUTH_UNSPECIFIED = 0;
+  // Public endpoint, no authentication required.
+  PUBLIC = 1;
+  // Authentication required to access endpoint.
+  REQUIRED = 2;
+}
+
+// A set of roles and permissions that together grant access. All roles and permissions within a set
+// must match (AND relationship).
+//
+// Examples:
+//   - roles: ["admin"] AND permissions: ["delete"]
+//   - roles: ["support", "manager"] AND permissions: ["view", "update"]
+//     - (must have BOTH roles AND BOTH permissions)
+message RuleSet {
+  // Required roles for this rule set.
+  repeated string roles = 1;
+  // Required permissions for this rule set.
+  repeated string permissions = 2;
+}
+
+// Rate limiting configuration for an RPC method.
+message RateRule {
+  // What to use as the rate limit key.
+  LimitBy key = 1;
+  // Roles that bypass rate limiting entirely. Only applies to authenticated users.
+  repeated string bypass_roles = 2;
+  // Rate limiting algorithm configuration.
+  oneof algorithm {
+    // Leaky bucket configuration.
+    LeakyBucket leaky_bucket = 3;
+
+    // Add more rate limiting algorithms here. For example, token bucket, fixed window, etc.
+  }
+}
+
+// Different types of rate limit keys.
+enum LimitBy {
+  LIMIT_UNSPECIFIED = 0;
+  // Limit by client IP address.
+  IP = 1;
+  // Limit by authenticated user.
+  USER = 2;
+  // Limit by API key.
+  //
+  // This is useful for limiting the number of requests per API key, regardless of the USER.
+  API_KEY = 3;
+  // Global limit across all requests.
+  //
+  // This is useful for limiting the total number of requests to a service, regardless of the
+  // client. For example, a service may want to limit the total number of requests to 1000 per
+  // second. This is different from the other types of rate limiting, which are per client.
+  GLOBAL = 4;
+}
+
+// Leaky bucket rate limiting configuration.
+message LeakyBucket {
+  // Maximum burst capacity (bucket size).
+  uint32 burst_capacity = 1;
+  // Number of requests allowed.
+  uint32 rate_requests = 2;
+  // Time window in seconds.
+  uint32 rate_seconds = 3;
+}
+
+// PrivacyRule controls field visibility and access.
+message PrivacyRule {
+  // Behavior when accessing field from unauthorized context.
+  PrivacyMode mode = 1;
+  // Specific roles that can access the field. If empty, all authenticated users can access.
+  repeated string visible_to_roles = 2;
+}
+
+// PrivacyMode is used to determine how to handle sensitive fields.
+enum PrivacyMode {
+  PRIVACY_UNSPECIFIED = 0;
+  // Field is not sensitive and can be returned in the response.
+  VISIBLE = 1;
+  // Field is sensitive and should be omitted from the response.
+  OMIT = 2;
+  // Field is sensitive and should be redacted from the response (replaced with a configurable
+  // placeholder value).
+  REDACT = 3;
+}
