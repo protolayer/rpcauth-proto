@@ -2,7 +2,7 @@
 
 This repository defines Protobuf options that allow you to declare authentication, authorization,
 and rate limiting policies directly in your Protobuf service or method definitions. Security
-requirements live **alongside your API definitions**, making them clear and maintainable.
+requirements live **alongside your API**, making them clear and maintainable.
 
 The Protobuf options are published as a Buf module at
 [buf.build/protolayer/rpcauth](https://buf.build/protolayer/rpcauth).
@@ -205,10 +205,10 @@ the privacy mode.
 Example:
 
 ```protobuf
-string email = 3 [(protolayer.privacy) = {mode: REDACT}];
+string email = 3 [(rpcauth.field) = {mode: REDACT}];
 
 // Exception: Admins can see the email
-string email = 3 [(protolayer.privacy) = {
+string email = 3 [(rpcauth.field) = {
   mode: REDACT
   visible_to_roles: ["admin"]
 }];
