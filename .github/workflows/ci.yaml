@@ -2,7 +2,12 @@ name: Buf CI
 on:
   push:
     paths:
-      - "proto/**/*.proto"
+      - '**.proto'
+      - '**/buf.yaml'
+      - '**/buf.lock'
+      - '**/buf.md'
+      - '**/README.md'
+      - '**/LICENSE'
     branches:
       - main
 permissions:
