@@ -33,11 +33,11 @@ extend google.protobuf.FieldOptions {
   optional PrivacyRule field = 1302;
 }
 
-// Combines authentication mode, access rules, and rate limiting for controlling access to services
+// Combines authentication, access rules, and rate limiting for controlling access to services
 // and methods.
 message AuthRule {
   // Determines if authentication is required or optional. Who are you?
-  AuthMode mode = 1;
+  AuthType auth = 1;
   // Specifies role-based access control rules using Hybrid RBAC (roles and permissions). What can
   // you do?
   //
@@ -49,8 +49,8 @@ message AuthRule {
   RateRule rate = 3;
 }
 
-// Different modes of authentication.
-enum AuthMode {
+// Authentication type for a service or method.
+enum AuthType {
   AUTH_UNSPECIFIED = 0;
   // Public endpoint, no authentication required.
   PUBLIC = 1;
@@ -119,13 +119,13 @@ message LeakyBucket {
 // PrivacyRule controls field visibility and access.
 message PrivacyRule {
   // Behavior when accessing field from unauthorized context.
-  PrivacyMode mode = 1;
+  PrivacyType privacy = 1;
   // Specific roles that can access the field. If empty, all authenticated users can access.
   repeated string visible_to_roles = 2;
 }
 
-// PrivacyMode is used to determine how to handle sensitive fields.
-enum PrivacyMode {
+// PrivacyType is used to determine how to handle sensitive fields.
+enum PrivacyType {
   PRIVACY_UNSPECIFIED = 0;
   // Field is not sensitive and can be returned in the response.
   VISIBLE = 1;

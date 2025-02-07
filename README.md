@@ -21,14 +21,14 @@ services using language-specific SDKs:
 - 🚦 Rate Limiting: Protect your services from abuse with configurable rate limiting strategies
 - 🔒 Field Privacy: Control field-level visibility for sensitive data
 - 🔌 Modular Design: Use only the components you need
-- 🔧 Framework Agnostic: Works with both Connect and gRPC
+- 🔧 Framework Agnostic: Works with both [Connect](https://connectrpc.com/) and
+  [gRPC](https://grpc.io/)
 
 ## Usage
 
-### 1. Import the module
+### 1. Import the module (buf.yaml)
 
 ```yaml
-# buf.yaml
 deps:
   - buf.build/protolayer/rpcauth
 ```
@@ -43,7 +43,7 @@ import "rpcauth/auth.proto";
 
 ### 2. Define security policies in your `.proto` files
 
-In this example, the `UserService` requires authentication by default.
+In this example, the entire `UserService` requires authentication by default.
 
 `GetUser` additionally requires the `"user"` role, while `SearchUsers` overrides the default to be
 public but is rate limited to 25 global requests per minute.
@@ -53,28 +53,30 @@ The `User` message also demonstrates field-level privacy with a redacted email f
 ```protobuf
 syntax = "proto3";
 
+package api.v1;
+
 import "rpcauth/auth.proto";
 
 service UserService {
   // All methods in this service require authentication.
-  option (rpcauth.service) = { mode: REQUIRED };
+  option (rpcauth.service).auth = REQUIRED;
 
   rpc GetUser(GetUserRequest) returns (GetUserResponse) {
     // Restrict access to the "user" role.
-    option (rpcauth.method) = { access: { roles: ["user"] } };
+    option (rpcauth.method).access = {
+      roles: ["user"]
+    };
   }
 
   rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse) {
     // Public endpoint, no authentication required. But rate limiting is enforced.
-    option (rpcauth.method) = {
-      mode: PUBLIC
-      rate: {
-        key: GLOBAL
-        leaky_bucket: {
-          burst_capacity: 5
-          rate_requests: 25
-          rate_seconds: 60 // 25 requests per minute
-        }
+    option (rpcauth.method).auth = PUBLIC;
+    option (rpcauth.method).rate = {
+      key: GLOBAL
+      leaky_bucket: {
+        burst_capacity: 5
+        rate_requests: 25
+        rate_seconds: 60 // 25 requests per minute
       }
     };
   }
@@ -83,18 +85,19 @@ service UserService {
 message User {
   string id = 1;
   string username = 2;
-  string email = 3 [(rpcauth.field) = { mode: REDACT }];
+  string email = 3 [(rpcauth.field).privacy = REDACT];
 }
 ```
 
 ### 3. Generate code like normal
 
-Nothing changes in your code generation process.
+Nothing changes in your code generation process. Enforcement of these policies is done at runtime
+using the SDK, see next step.
 
 ### 4. Use the SDK to enforce policies
 
-Here's where things get interesting. The SDK provides a set of pluggable components that you can use
-to enforce the policies defined in your Protobuf files.
+This is where things get interesting. The SDK provides a set of pluggable components that you can
+use to enforce the policies defined in your Protobuf files.
 
 ```go
 import (
@@ -123,10 +126,18 @@ mux.Handle(userv1connect.NewUserServiceHandler(
 Authentication rules can be defined at both service and method levels. Method-level rules override
 service-level rules.
 
-Modes:
+Auth:
 
 - `PUBLIC`: No authentication required
 - `REQUIRED`: Authentication required
+
+Example:
+
+```protobuf
+option (rpcauth.service).auth = REQUIRED;
+
+option (rpcauth.service).auth = PUBLIC;
+```
 
 ### Authorization (what can you do?)
 
@@ -143,22 +154,58 @@ AND/OR Logic:
 Example:
 
 ```protobuf
-// Single rule set
-access: {
-  roles: ["admin"]
-  permissions: ["delete"]
-}
+// === Single rule set ===
+option (rpcauth.method).access = {
+  roles: ["user"]
+  permissions: ["read"]
+};
 // Requires: admin role AND delete permission
 
-// Multiple rule sets
-access: [
-  { roles: ["admin"] },
-  { roles: ["support", "manager"], permissions: ["view", "update"] }
-]
+// === Multiple rule sets ===
+option (rpcauth.method).access = {
+  roles: ["admin"]
+};
+option (rpcauth.method).access = {
+  roles: [
+    "support",
+    "manager"
+  ]
+  permissions: [
+    "view",
+    "update"
+  ]
+};
 // Access granted if either:
 // 1. User has admin role, OR
 // 2. User has both support AND manager roles, AND both view AND update permissions
 ```
+
+The Multiple rule sets example can also be written as:
+
+<details>
+<summary>Expand</summary>
+
+```protobuf
+option (rpcauth.method) = {
+  access: [
+    {
+      roles: ["admin"]
+    },
+    {
+      roles: [
+        "support",
+        "manager"
+      ]
+      permissions: [
+        "view",
+        "update"
+      ]
+    }
+  ]
+};
+```
+
+</details>
 
 ### Rate Limiting (how often can you do it?)
 
@@ -181,14 +228,14 @@ Algorithms:
 Example:
 
 ```protobuf
-rate: {
-  key: USER
+option (rpcauth.method).rate = {
+  key: GLOBAL
   leaky_bucket: {
     burst_capacity: 5
     rate_requests: 25
     rate_seconds: 60 // 25 requests per minute
   }
-}
+};
 ```
 
 ### Privacy Controls
@@ -205,11 +252,11 @@ the privacy mode.
 Example:
 
 ```protobuf
-string email = 3 [(rpcauth.field) = {mode: REDACT}];
+string email = 3 [(rpcauth.field).privacy = REDACT];
 
 // Exception: Admins can see the email
 string email = 3 [(rpcauth.field) = {
-  mode: REDACT
+  privacy: REDACT
   visible_to_roles: ["admin"]
 }];
 ```

@@ -4,8 +4,9 @@ all: install-buf format lint generate
 
 PROTO_DIR := proto
 GEN_DIR := gen
+INSTALL_PATH := $(if $(GOBIN),$(GOBIN)/buf,/usr/local/bin/buf)
 BUF := $(shell command -v buf 2> /dev/null)
-BUF_VERSION := v1.46.0
+BUF_VERSION := v1.50.0
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
 BUF_GEN_FILE := buf.gen.yaml
@@ -31,16 +32,18 @@ endif
 $(shell mkdir -p $(GEN_DIR))
 
 install-buf:
-ifndef BUF
-	@echo "Installing buf $(BUF_VERSION)..."
-	@curl -sSL \
-		"https://github.com/bufbuild/buf/releases/download/$(BUF_VERSION)/buf-$(OS)-$(ARCH)" \
-		-o "/usr/local/bin/buf"
-	@chmod +x "/usr/local/bin/buf"
-	@echo "buf installed successfully"
-else
-	@echo "buf is already installed at $(BUF)"
-endif
+	@if [ -z "$(BUF)" ] || [ "$(UPGRADE)" = "1" ]; then \
+		echo "Installing buf $(BUF_VERSION)..."; \
+		curl -sSL \
+			"https://github.com/bufbuild/buf/releases/download/$(BUF_VERSION)/buf-$(OS)-$(ARCH)" \
+			-o "$(INSTALL_PATH)"; \
+		chmod +x "$(INSTALL_PATH)"; \
+		echo "buf installed successfully"; \
+		buf --version; \
+	else \
+		echo "buf is already installed at $(BUF)"; \
+		buf --version; \
+	fi
 
 generate: install-buf
 	@if [ -f "$(BUF_GEN_FILE)" ]; then \

@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package api.v1;
+
+import "rpcauth/auth.proto";
+
+service UserService {
+  // All methods in this service require authentication.
+  option (rpcauth.service).auth = REQUIRED;
+
+  rpc GetUser(GetUserRequest) returns (GetUserResponse) {
+    // Restrict access to the "user" role.
+    option (rpcauth.method).access = {
+      roles: ["user"]
+      permissions: ["read"]
+    };
+  }
+
+  rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse) {
+    // Public endpoint, no authentication required. But rate limiting is enforced.
+    option (rpcauth.method).auth = PUBLIC;
+    option (rpcauth.method).rate = {
+      key: GLOBAL
+      leaky_bucket: {
+        burst_capacity: 5
+        rate_requests: 25
+        rate_seconds: 60 // 25 requests per minute
+      }
+    };
+  }
+}
+
+message User {
+  string id = 1;
+  string username = 2;
+  string email = 3 [(rpcauth.field).privacy = REDACT];
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message SearchUsersRequest {
+  string query = 1;
+}
+
+message SearchUsersResponse {
+  repeated User users = 1;
+}
