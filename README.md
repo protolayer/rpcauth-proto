@@ -1,11 +1,13 @@
-# rpcauth-proto
+# rpcauth
 
 This repository defines Protobuf options that allow you to declare authentication, authorization,
-and rate limiting policies directly in your Protobuf service or method definitions. Security
-requirements live **alongside your API**, making them clear and maintainable.
+and rate limiting policies directly in your Protobuf service or method definitions.
 
-The Protobuf options are published as a Buf module at
-[buf.build/protolayer/rpcauth](https://buf.build/protolayer/rpcauth).
+Security requirements live **alongside your API**, making them clear and maintainable.
+
+- GitHub Repository:
+  [github.com/protolayer/rpcauth-proto](https://github.com/protolayer/rpcauth-proto)
+- Protobuf definitions: [buf.build/protolayer/rpcauth](https://buf.build/protolayer/rpcauth)
 
 Enforce these policies in your [Connect](https://connectrpc.com/) (or [gRPC](https://grpc.io/))
 services using language-specific SDKs:
