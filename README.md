@@ -26,6 +26,38 @@ services using language-specific SDKs:
 - 🔧 Framework Agnostic: Works with both [Connect](https://connectrpc.com/) and
   [gRPC](https://grpc.io/)
 
+```mermaid
+flowchart TD
+    Start([Incoming Request]) --> PreAuth
+
+    PreAuth[Pre-Auth Rate Limit]
+    PreAuth -->|Exceeded| R1[429 Too Many Requests]
+    PreAuth -->|Pass| Auth
+
+    Auth[Authenticator]
+    Auth -->|Invalid| R2[401 Unauthorized]
+    Auth -->|Valid| PostAuth
+
+    PostAuth[Post-Auth Rate Limit]
+    PostAuth -->|Exceeded| R3[429 Too Many Requests]
+    PostAuth -->|Pass| Authz
+
+    Authz[Authorization]
+    Authz -->|Denied| R4[403 Forbidden]
+    Authz -->|Granted| Handler([Request Handler])
+
+    %% Styling
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px
+    classDef error fill:#ffebee,stroke:#c62828,color:#c62828
+    classDef success fill:#e8f5e9,stroke:#2e7d32,color:#2e7d32
+    classDef process fill:#E0E0E0,stroke:#9E9E9E,color:black
+
+    class R1,R2,R3,R4 error
+    class Handler success
+    class PreAuth,Auth,PostAuth,Authz process
+    class Start default
+```
+
 ## Usage
 
 ### 1. Import the module (buf.yaml)

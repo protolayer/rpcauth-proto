@@ -1,5 +1,48 @@
 syntax = "proto3";
 
+// Package rpcauth defines authentication, authorization, and rate limiting rules for RPC services
+// and methods.
+//
+//             +---------------+
+//             |    Request    |
+//             +-------+-------+
+//                     |
+//                     v
+//     +--------------------------------+     # Uses IP-based rate limiting for anonymous users
+//     |      Pre-Auth Rate Limit       |     # Example: Max 100 requests per IP per minute
+//     +--+-------------+---------------+
+//        |             |                     # Can also use GLOBAL limit type for entire API
+//        v             v                     # Example: max 10,000 total requests per minute
+//      [429]       [Continue]
+//                      |
+//                      v
+//     +--------------------------------+     # Validates credentials (JWT, API key, etc)
+//     |         Authenticator          |     # Extracts user identity and basic claims
+//     +--+-------------+---------------+     # Example: JWT signature validation
+//        |             |
+//        v             v
+//      [401]       [Continue]
+//                      |
+//                      v
+//     +--------------------------------+     # Now can rate limit by user ID or API key
+//     |     Post-Auth Rate Limit       |     # Different limits by user tier/role
+//     +--+-------------+---------------+     # Example: Premium users: 1000 req/min
+//        |             |                     #          Basic users: 100 req/min
+//        v             v
+//      [429]       [Continue]
+//                      |
+//                      v
+//     +--------------------------------+     # Checks user roles & permissions
+//     |       Authorization            |     # Example: User needs admin role AND
+//     +--+-------------+---------------+     #          delete permission for this endpoint
+//        |             |
+//        v             v
+//      [403]        [Handler]
+//
+// The above pipeline is a high-level overview of the request processing flow. Each step can be
+// customized to fit the needs of the API via plugable components. The goal is to provide a flexible
+// set of Protobuf options that can be used to define auth-related rules and then enforce them at
+// runtime.
 package rpcauth;
 
 import "google/protobuf/descriptor.proto";
@@ -33,19 +76,24 @@ extend google.protobuf.FieldOptions {
   optional PrivacyRule field = 1302;
 }
 
-// Combines authentication, access rules, and rate limiting for controlling access to services
-// and methods.
+// Combines authentication, access rules, and rate limiting for controlling access to services and
+// methods.
 message AuthRule {
-  // Determines if authentication is required or optional. Who are you?
+  // Determines if authentication is required or optional.
+  //
+  // Who are you?
   AuthType auth = 1;
-  // Specifies role-based access control rules using Hybrid RBAC (roles and permissions). What can
-  // you do?
+  // Specifies role-based access control rules using Hybrid RBAC (roles and permissions).
   //
   // List of rule sets, where any single rule set grants access (OR relationship). Access is granted
   // if ANY rule set passes. This allows for different combinations of roles/permissions that can
   // grant access.
+  //
+  // What can you do?
   repeated RuleSet access = 2;
-  // Defines rate limiting parameters. How often can you do it?
+  // Defines rate limiting parameters.
+  //
+  // How often can you do it?
   RateRule rate = 3;
 }
 
@@ -65,6 +113,9 @@ enum AuthType {
 //   - roles: ["admin"] AND permissions: ["delete"]
 //   - roles: ["support", "manager"] AND permissions: ["view", "update"]
 //     - (must have BOTH roles AND BOTH permissions)
+//
+// TODO(mf): let's consider expanding this to support an expression language for more complex rules.
+// See https://github.com/protolayer/rpcauth-proto/issues/1 for more details.
 message RuleSet {
   // Required roles for this rule set.
   repeated string roles = 1;
@@ -75,7 +126,7 @@ message RuleSet {
 // Rate limiting configuration for an RPC method.
 message RateRule {
   // What to use as the rate limit key.
-  LimitBy key = 1;
+  RateKeyType key = 1;
   // Roles that bypass rate limiting entirely. Only applies to authenticated users.
   repeated string bypass_roles = 2;
   // Rate limiting algorithm configuration.
@@ -88,7 +139,7 @@ message RateRule {
 }
 
 // Different types of rate limit keys.
-enum LimitBy {
+enum RateKeyType {
   LIMIT_UNSPECIFIED = 0;
   // Limit by client IP address.
   IP = 1;
@@ -100,20 +151,36 @@ enum LimitBy {
   API_KEY = 3;
   // Global limit across all requests.
   //
-  // This is useful for limiting the total number of requests to a service, regardless of the
-  // client. For example, a service may want to limit the total number of requests to 1000 per
-  // second. This is different from the other types of rate limiting, which are per client.
+  // This is useful for limiting the total number of requests to a service or method, regardless of
+  // the client. For example, a method may want to limit the total number of requests to 1000 per
+  // second. This is different from the other types of rate limiting, which are per client
+  // (anonymous by IP, authenticated user, or API key).
   GLOBAL = 4;
 }
 
 // Leaky bucket rate limiting configuration.
+//
+// Imagine a bucket that:
+//  - Can hold up to X requests (burst_capacity)
+//  - Drains (processes) requests at a steady rate of Y requests per Z seconds
+//  - Rejects any new requests immediately when the bucket is full
+//
+// Example configuration:
+//  - burst_capacity: 20       # Can handle bursts of up to 20 requests
+//  - allowed_requests: 10     # Processes 10 requests per time window
+//  - time_window_seconds: 60  # Every 60 seconds (i.e. 10 req/min, drain rate ~0.167 req/sec)
+//
+// In this example, the service processes a maximum of 600 requests per hour (10 per minute), while
+// allowing temporary bursts of up to 20 requests. While the bucket is full, any new incoming
+// requests are immediately rejected. The bucket continuously drains at a rate of 10 requests per 60
+// seconds, and as space becomes available, new requests can be accepted again.
 message LeakyBucket {
-  // Maximum burst capacity (bucket size).
+  // Maximum number of requests the bucket can hold at any one time.
   uint32 burst_capacity = 1;
-  // Number of requests allowed.
-  uint32 rate_requests = 2;
-  // Time window in seconds.
-  uint32 rate_seconds = 3;
+  // Number of requests processed per time window.
+  uint32 allowed_requests = 2;
+  // Duration of the time window (in seconds) over which allowed_requests are processed.
+  uint32 time_window_seconds = 3;
 }
 
 // PrivacyRule controls field visibility and access.
@@ -129,7 +196,7 @@ enum PrivacyType {
   PRIVACY_UNSPECIFIED = 0;
   // Field is not sensitive and can be returned in the response.
   VISIBLE = 1;
-  // Field is sensitive and should be omitted from the response.
+  // Field is sensitive and should be omitted from the response entirely.
   OMIT = 2;
   // Field is sensitive and should be redacted from the response (replaced with a configurable
   // placeholder value).
