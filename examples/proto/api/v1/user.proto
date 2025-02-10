@@ -23,8 +23,8 @@ service UserService {
       key: GLOBAL
       leaky_bucket: {
         burst_capacity: 5
-        rate_requests: 25
-        rate_seconds: 60 // 25 requests per minute
+        allowed_requests: 25
+        time_window_seconds: 60 // 25 requests per minute
       }
     };
   }
