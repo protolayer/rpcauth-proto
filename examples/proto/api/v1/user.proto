@@ -5,19 +5,13 @@ package api.v1;
 import "rpcauth/auth.proto";
 
 service UserService {
-  // All methods in this service require authentication.
+  // Unless overridden by a method-level rule, all methods in this service require authentication.
   option (rpcauth.service).auth = REQUIRED;
 
-  rpc GetUser(GetUserRequest) returns (GetUserResponse) {
-    // Restrict access to the "user" role.
-    option (rpcauth.method).access = {
-      roles: ["user"]
-      permissions: ["read"]
-    };
-  }
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
 
   rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse) {
-    // Public endpoint, no authentication required. But rate limiting is enforced.
+    // Public endpoint, no authentication required. But global rate limiting is enforced.
     option (rpcauth.method).auth = PUBLIC;
     option (rpcauth.method).rate = {
       key: GLOBAL

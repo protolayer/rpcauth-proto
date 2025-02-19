@@ -1,7 +1,6 @@
 syntax = "proto3";
 
-// Package rpcauth defines authentication, authorization, and rate limiting rules for RPC services
-// and methods.
+// Package rpcauth defines authentication and rate limiting rules for RPC services and methods.
 //
 //             +---------------+
 //             |    Request    |
@@ -10,7 +9,7 @@ syntax = "proto3";
 //                     v
 //     +--------------------------------+     # Uses IP-based rate limiting for anonymous users
 //     |      Pre-Auth Rate Limit       |     # Example: Max 100 requests per IP per minute
-//     +--+-------------+---------------+
+//     +--+-------------+---------------+     #
 //        |             |                     # Can also use GLOBAL limit type for entire API
 //        v             v                     # Example: max 10,000 total requests per minute
 //      [429]       [Continue]
@@ -29,19 +28,11 @@ syntax = "proto3";
 //     +--+-------------+---------------+     # Example: Premium users: 1000 req/min
 //        |             |                     #          Basic users: 100 req/min
 //        v             v
-//      [429]       [Continue]
-//                      |
-//                      v
-//     +--------------------------------+     # Checks user roles & permissions
-//     |       Authorization            |     # Example: User needs admin role AND
-//     +--+-------------+---------------+     #          delete permission for this endpoint
-//        |             |
-//        v             v
-//      [403]        [Handler]
+//      [429]       [Handler]
 //
 // The above pipeline is a high-level overview of the request processing flow. Each step can be
 // customized to fit the needs of the API via plugable components. The goal is to provide a flexible
-// set of Protobuf options that can be used to define auth-related rules and then enforce them at
+// set of Protobuf options that can be used to define auth-related rules that get enforced at
 // runtime.
 package rpcauth;
 
@@ -69,32 +60,22 @@ extend google.protobuf.MethodOptions {
   optional AuthRule method = 1301;
 }
 
-// Adds privacy controls for individual message fields. Used to restrict field visibility and access
-// based on user roles.
+// Adds privacy controls for individual message fields.
 extend google.protobuf.FieldOptions {
-  // Controls field visibility and access requirements.
+  // Controls field visibility.
   optional PrivacyRule field = 1302;
 }
 
-// Combines authentication, access rules, and rate limiting for controlling access to services and
-// methods.
+// Combines authentication and rate limiting for controlling access to services and methods.
 message AuthRule {
   // Determines if authentication is required or optional.
   //
   // Who are you?
   AuthType auth = 1;
-  // Specifies role-based access control rules using Hybrid RBAC (roles and permissions).
-  //
-  // List of rule sets, where any single rule set grants access (OR relationship). Access is granted
-  // if ANY rule set passes. This allows for different combinations of roles/permissions that can
-  // grant access.
-  //
-  // What can you do?
-  repeated RuleSet access = 2;
   // Defines rate limiting parameters.
   //
   // How often can you do it?
-  RateRule rate = 3;
+  RateRule rate = 2;
 }
 
 // Authentication type for a service or method.
@@ -104,23 +85,6 @@ enum AuthType {
   PUBLIC = 1;
   // Authentication required to access endpoint.
   REQUIRED = 2;
-}
-
-// A set of roles and permissions that together grant access. All roles and permissions within a set
-// must match (AND relationship).
-//
-// Examples:
-//   - roles: ["admin"] AND permissions: ["delete"]
-//   - roles: ["support", "manager"] AND permissions: ["view", "update"]
-//     - (must have BOTH roles AND BOTH permissions)
-//
-// TODO(mf): let's consider expanding this to support an expression language for more complex rules.
-// See https://github.com/protolayer/rpcauth-proto/issues/1 for more details.
-message RuleSet {
-  // Required roles for this rule set.
-  repeated string roles = 1;
-  // Required permissions for this rule set.
-  repeated string permissions = 2;
 }
 
 // Rate limiting configuration for an RPC method.
@@ -183,12 +147,10 @@ message LeakyBucket {
   uint32 time_window_seconds = 3;
 }
 
-// PrivacyRule controls field visibility and access.
+// PrivacyRule controls field visibility behavior.
 message PrivacyRule {
-  // Behavior when accessing field from unauthorized context.
+  // Behavior when accessing field from an unauthenticated context.
   PrivacyType privacy = 1;
-  // Specific roles that can access the field. If empty, all authenticated users can access.
-  repeated string visible_to_roles = 2;
 }
 
 // PrivacyType is used to determine how to handle sensitive fields.

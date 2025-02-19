@@ -76,6 +76,9 @@ init: install-buf
 
 check: build format lint breaking
 
+push: install-buf
+	$(BUF) push --exclude-unnamed
+
 help:
 	@echo "Available targets:"
 	@echo "  generate    : Generate code from proto files"

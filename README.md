@@ -1,7 +1,7 @@
 # rpcauth
 
-This repository defines Protobuf options that allow you to declare authentication, authorization,
-and rate limiting policies directly in your Protobuf service or method definitions.
+This repository defines Protobuf options that allow you to declare authentication and rate limiting
+policies directly in your Protobuf service or method definitions.
 
 Security requirements live **alongside your API**, making them clear and maintainable.
 
@@ -18,8 +18,6 @@ services using language-specific SDKs:
 ## Features
 
 - 🔐 Authentication: Define who can access your services and methods
-- 🎫 Authorization: Control what authenticated users can do using hybrid RBAC (roles and
-  permissions)
 - 🚦 Rate Limiting: Protect your services from abuse with configurable rate limiting strategies
 - 🔒 Field Privacy: Control field-level visibility for sensitive data
 - 🔌 Modular Design: Use only the components you need
@@ -36,15 +34,11 @@ flowchart TD
 
     Auth[Authenticator]
     Auth -->|Invalid| R2[401 Unauthorized]
-    Auth -->|Valid| PostAuth
+    Auth -->|Pass| PostAuth
 
     PostAuth[Post-Auth Rate Limit]
     PostAuth -->|Exceeded| R3[429 Too Many Requests]
-    PostAuth -->|Pass| Authz
-
-    Authz[Authorization]
-    Authz -->|Denied| R4[403 Forbidden]
-    Authz -->|Granted| Handler([Request Handler])
+    PostAuth -->|Granted| Handler([Request Handler])
 
     %% Styling
     classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px
@@ -54,7 +48,7 @@ flowchart TD
 
     class R1,R2,R3,R4 error
     class Handler success
-    class PreAuth,Auth,PostAuth,Authz process
+    class PreAuth,Auth,PostAuth process
     class Start default
 ```
 
@@ -77,10 +71,8 @@ import "rpcauth/auth.proto";
 
 ### 2. Define security policies in your `.proto` files
 
-In this example, the entire `UserService` requires authentication by default.
-
-`GetUser` additionally requires the `"user"` role, while `SearchUsers` overrides the default to be
-public but is rate limited to 25 global requests per minute.
+In this example, the entire `UserService` requires authentication by default. Some methods override
+this rule with `PUBLIC` to allow unauthenticated access.
 
 The `User` message also demonstrates field-level privacy with a redacted email field.
 
@@ -92,25 +84,20 @@ package api.v1;
 import "rpcauth/auth.proto";
 
 service UserService {
-  // All methods in this service require authentication.
+  // Unless overridden by a method-level rule, all methods in this service require authentication.
   option (rpcauth.service).auth = REQUIRED;
 
-  rpc GetUser(GetUserRequest) returns (GetUserResponse) {
-    // Restrict access to the "user" role.
-    option (rpcauth.method).access = {
-      roles: ["user"]
-    };
-  }
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
 
   rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse) {
-    // Public endpoint, no authentication required. But rate limiting is enforced.
+    // Public endpoint, no authentication required. But global rate limiting is enforced.
     option (rpcauth.method).auth = PUBLIC;
     option (rpcauth.method).rate = {
       key: GLOBAL
       leaky_bucket: {
         burst_capacity: 5
-        rate_requests: 25
-        rate_seconds: 60 // 25 requests per minute
+        allowed_requests: 25
+        time_window_seconds: 60 // 25 requests per minute
       }
     };
   }
@@ -141,7 +128,6 @@ import (
 // Create auth interceptor with your implementations or use the built-in ones.
 authInterceptor := rpcauth.NewConnectInterceptor(
     rpcauth.WithAuthenticator(yourAuthImpl),
-    rpcauth.WithAuthorizer(yourAuthzImpl),
     rpcauth.WithRateLimiter(yourRateLimiter),
 )
 
@@ -157,8 +143,8 @@ mux.Handle(userv1connect.NewUserServiceHandler(
 
 ### Authentication (who are you?)
 
-Authentication rules can be defined at both service and method levels. Method-level rules override
-service-level rules.
+Authentication rules can be defined at both service and method levels. **Method-level rules take
+precedence** over service-level rules.
 
 Auth:
 
@@ -172,74 +158,6 @@ option (rpcauth.service).auth = REQUIRED;
 
 option (rpcauth.service).auth = PUBLIC;
 ```
-
-### Authorization (what can you do?)
-
-Uses Hybrid RBAC with rule sets that combine:
-
-- `roles` (e.g., "admin", "user")
-- `permissions` (e.g., "read", "write")
-
-AND/OR Logic:
-
-- Between rule sets: ANY rule set can grant access (OR relationship)
-- Within a rule set: all roles AND all permissions must match
-
-Example:
-
-```protobuf
-// === Single rule set ===
-option (rpcauth.method).access = {
-  roles: ["user"]
-  permissions: ["read"]
-};
-// Requires: admin role AND delete permission
-
-// === Multiple rule sets ===
-option (rpcauth.method).access = {
-  roles: ["admin"]
-};
-option (rpcauth.method).access = {
-  roles: [
-    "support",
-    "manager"
-  ]
-  permissions: [
-    "view",
-    "update"
-  ]
-};
-// Access granted if either:
-// 1. User has admin role, OR
-// 2. User has both support AND manager roles, AND both view AND update permissions
-```
-
-The Multiple rule sets example can also be written as:
-
-<details>
-<summary>Expand</summary>
-
-```protobuf
-option (rpcauth.method) = {
-  access: [
-    {
-      roles: ["admin"]
-    },
-    {
-      roles: [
-        "support",
-        "manager"
-      ]
-      permissions: [
-        "view",
-        "update"
-      ]
-    }
-  ]
-};
-```
-
-</details>
 
 ### Rate Limiting (how often can you do it?)
 
@@ -256,8 +174,8 @@ Algorithms:
 
 - Leaky Bucket
   - `burst_capacity` - Maximum burst size
-  - `rate_requests` - Number of allowed requests
-  - `rate_seconds` - Time window in seconds
+  - `allowed_requests` - Number of allowed requests
+  - `time_window_seconds` - Time window in seconds
 
 Example:
 
@@ -266,8 +184,8 @@ option (rpcauth.method).rate = {
   key: GLOBAL
   leaky_bucket: {
     burst_capacity: 5
-    rate_requests: 25
-    rate_seconds: 60 // 25 requests per minute
+    allowed_requests: 25
+    time_window_seconds: 60 // 25 requests per minute
   }
 };
 ```
@@ -280,19 +198,14 @@ Controls field-level visibility in responses.
 - `OMIT`: Remove field from response
 - `REDACT`: Replace field with placeholder value
 
-It's also possible to define exceptions by specifying roles that can access the field regardless of
-the privacy mode.
-
 Example:
 
 ```protobuf
+// Redact email field with a placeholder value for unauthenticated users.
 string email = 3 [(rpcauth.field).privacy = REDACT];
 
-// Exception: Admins can see the email
-string email = 3 [(rpcauth.field) = {
-  privacy: REDACT
-  visible_to_roles: ["admin"]
-}];
+// Hide the address field from all responses for unauthenticated users.
+string address = 3 [(rpcauth.field).privacy = OMIT];
 ```
 
 ## License
